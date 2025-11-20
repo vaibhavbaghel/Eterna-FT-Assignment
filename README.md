@@ -1,44 +1,263 @@
 # Crypto Trading Backend — Market Order Implementation
 
-This project implements a mock crypto trading backend (assignment) using Node.js + TypeScript, Fastify, BullMQ + Redis, and PostgreSQL.
+This project implements a **crypto order execution engine** that processes **market orders** with:
 
-- Why Market Order?
-Market orders execute immediately at the best available price.
-This keeps the flow simple and allows the system to demonstrate:
-- DEX routing
-- slippage protection
-- execution simulation
-- WebSocket lifecycle events
+* Real-time WebSocket status updates
+* DEX routing between **Raydium** & **Meteora**
+* Queue-based execution (BullMQ + Redis)
+* Order persistence (PostgreSQL)
+* Mock DEX simulation with realistic delays
 
-- How this engine can be extended:
-Limit orders can be added by introducing background price monitoring and triggering execution when the limit price is reached.
-Sniper orders can be added by monitoring token launch or liquidity events and triggering execution when initialization occurs.
-Features
-- POST `/api/orders/execute` — validate request and return `orderId` (market orders only).
-- WebSocket `/api/orders/ws` — connect and send `{ "orderId": "..." }` to receive lifecycle updates: `pending → routing → building → submitted → confirmed` or `failed`.
-- `MockDexRouter` — returns Raydium and Meteora quotes with 200ms delay and 2–5% variance; `executeSwap()` simulates 2–3s execution and returns mock `txHash`.
-- `DexRoutingService` — fetches both quotes in parallel, applies fee/slippage, and chooses best DEX.
-- Queue worker (BullMQ) processes orders with concurrency 10 and default attempts 3 with exponential backoff.
-- PostgreSQL persistence for orders and status timeline; Redis used for active order state and WS mapping.
+Architecture and expected behavior is fully aligned with the official assignment description.
 
-Run (local dev)
+---
 
-1. Install dependencies:
+# 📌 Why I Chose *Market Orders*
+
+I chose **market orders** because they are the simplest and most common execution type, allowing me to focus on:
+
+* DEX routing
+* Real-time WebSocket streaming
+* Queue concurrency
+* Proper architecture
+
+### How to extend to other types
+
+* **Limit orders**: Add a price-trigger evaluation before routing.
+* **Sniper orders**: Add launch-event detection and auto-execute when liquidity appears.
+
+---
+
+# 🧠 System Overview
+
+## 1. **Order Submission**
+
+✔ User sends:
+
 ```
-npm install
-```
-
-2. Start Redis and PostgreSQL locally.
-
-3. Run in dev:
-```
-npm run dev
-```
-
-Testing
-```
-npm test
+POST /api/orders/execute
 ```
 
-Notes
-- For brevity many resources (Redis, Postgres) are assumed available at defaults. Tests mock external dependencies where appropriate.
+✔ Request is validated
+✔ A unique `orderId` is returned
+✔ Order is queued for background processing
+✔ Same client then connects via WebSocket for updates
+
+
+---
+
+## 2. **DEX Routing Logic**
+
+The engine fetches mock quotes from:
+
+* **Raydium**
+* **Meteora**
+
+Then:
+
+* Compares quotes
+* Chooses best execution venue
+* Logs routing decision
+
+Quotes are simulated with:
+
+* 200ms delay
+* 2–5% random variance
+
+
+---
+
+## 3. **Execution Lifecycle (WebSocket)**
+
+Once connected to:
+
+```
+/api/orders/ws
+```
+
+The engine streams these statuses in real time:
+
+| Status        | Meaning                           |
+| ------------- | --------------------------------- |
+| **pending**   | Order received & queued           |
+| **routing**   | Fetching Raydium + Meteora quotes |
+| **building**  | Creating transaction              |
+| **submitted** | Sending to network                |
+| **confirmed** | Executed (txHash, executed price) |
+| **failed**    | Any error                         |
+
+All required statuses implemented.
+
+
+---
+
+## 4. **Transaction Settlement (Mock)**
+
+* Simulates 2–3 seconds execution
+* Generates txHash
+* Applies slippage simulation
+* Stores execution price and result
+
+
+
+---
+
+# 🛠 Tech Stack
+
+* **Node.js + TypeScript**
+* **Fastify** (WebSocket support)
+* **Redis + BullMQ** (queue processing up to 10 concurrent jobs)
+* **PostgreSQL** (order + status persistence)
+* **Mock DEX Router** (Raydium/Meteora simulation)
+
+
+---
+
+# ⚙ Features Implemented (Assignment Requirements)
+
+✔ Single order type (Market)
+✔ DEX routing with comparison
+✔ WebSocket lifecycle streaming
+✔ Queue concurrency (BullMQ with Redis)
+✔ Exponential retry (≤3 attempts)
+✔ DB persistence (orders + status events)
+✔ Mock DEX with latency + random price variance
+✔ Clean logs for routing decisions
+✔ Deployable with Docker / Render
+✔ Clean folder structure & modular code
+
+---
+
+# 📡 API Documentation
+
+### ▶ **POST /api/orders/execute**
+
+**Request:**
+
+```json
+{
+  "type": "market",
+  "side": "buy",
+  "baseAsset": "SOL",
+  "quoteAsset": "USDC",
+  "amount": 1
+}
+```
+
+**Response:**
+
+```json
+{
+  "orderId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+---
+
+### ▶ **WebSocket: /api/orders/ws**
+
+1. Connect to:
+
+```
+ws://localhost:3000/api/orders/ws
+```
+
+or on Render:
+
+```
+wss://<your-app-name>.onrender.com/api/orders/ws
+```
+
+2. Then send:
+
+```json
+{ "orderId": "<your-order-id>" }
+```
+
+3. Receive updates:
+
+```
+pending → routing → building → submitted → confirmed
+```
+
+---
+
+# 🗄 Database Schema
+
+### **orders**
+
+| Field          | Type        |
+| -------------- | ----------- |
+| order_id       | TEXT        |
+| payload        | JSONB       |
+| status         | TEXT        |
+| chosen_dex     | TEXT        |
+| executed_price | NUMERIC     |
+| tx_hash        | TEXT        |
+| failure_reason | TEXT        |
+| created_at     | TIMESTAMPTZ |
+| updated_at     | TIMESTAMPTZ |
+
+### **order_statuses**
+
+| Field    | Type        |
+| -------- | ----------- |
+| id       | SERIAL      |
+| order_id | TEXT (FK)   |
+| status   | TEXT        |
+| meta     | JSONB       |
+| ts       | TIMESTAMPTZ |
+
+---
+
+# 🚀 Running Locally (Docker)
+
+```
+docker-compose up --build
+```
+
+Backend runs on:
+
+```
+http://localhost:3000
+```
+
+---
+
+# 🌐 Deployment URL
+
+*(https://crypto-trading-ll4e.onrender.com)*
+
+---
+
+# 🎥 Demo Video
+
+
+# 🧪 Tests
+
+≥10 tests cover:
+
+* DEX routing logic
+* Queue behavior
+* Retry logic
+* WebSocket message lifecycle
+* Order persistence
+
+(Include your test folder path here.)
+
+---
+
+# 📁 Project Structure
+
+```
+src/
+ ├── index.ts
+ ├── wsManager.ts
+ ├── queue/
+ ├── processor.ts
+ ├── services/
+ ├── db.ts
+ └── utils/
+```
+
+
