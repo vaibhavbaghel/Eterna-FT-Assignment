@@ -9,7 +9,7 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
-    "@fastify/websocket": "^8.0.0",
+    "@fastify/websocket": "^8.3.1",
     "bullmq": "^2.0.0",
     "dotenv": "^17.2.3",
     "fastify": "^4.20.0",

@@ -34,6 +34,7 @@ fastify.post('/api/orders/execute', async (request, reply) => {
 
 // WebSocket endpoint: client can connect here and send a JSON { orderId } as first message
 fastify.get('/api/orders/ws', { websocket: true }, (connection /* SocketStream */, req) => {
+  console.log(" WEBSOCKET UPGRADE SUCCESSFUL");
   const ws = connection.socket;
   ws.on('message', (msg: any) => {
     try {
